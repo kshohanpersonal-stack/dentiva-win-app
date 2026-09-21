@@ -203,8 +203,28 @@ public sealed class BackupService
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
+        PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
     };
+
+    /// <summary>
+    /// Detects the encrypted-manifest envelope without depending on property casing, so a package
+    /// is never silently treated as plaintext (which would hand the raw ciphertext to SQLite).
+    /// </summary>
+    private static bool TryGetEncryptedFlag(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object) return false;
+
+        foreach (var property in root.EnumerateObject())
+        {
+            if (string.Equals(property.Name, "encrypted", StringComparison.OrdinalIgnoreCase))
+            {
+                return property.Value.ValueKind == JsonValueKind.True;
+            }
+        }
+
+        return false;
+    }
 
     private Dictionary<string, int> CollectCounts()
     {
@@ -235,11 +255,23 @@ public sealed class BackupService
 
     private static void StripAuditLog(string snapshotPath)
     {
-        using var conn = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = snapshotPath }.ToString());
-        conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM audit_log; VACUUM;";
-        cmd.ExecuteNonQuery();
+        // Pooling=False: Microsoft.Data.Sqlite otherwise keeps the handle alive in its connection
+        // pool after Dispose, which locks the snapshot file and breaks the subsequent zip/move.
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = snapshotPath,
+            Pooling = false
+        }.ToString();
+
+        using (var conn = new SqliteConnection(connectionString))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM audit_log; VACUUM;";
+            cmd.ExecuteNonQuery();
+        }
+
+        SqliteConnection.ClearAllPools();
     }
 
     private List<(string Relative, string Absolute)> CollectAttachmentFiles()
@@ -392,16 +424,16 @@ public sealed class BackupService
                 using var reader = new StreamReader(manifestEntry.Open(), Encoding.UTF8);
                 var json = reader.ReadToEnd();
                 using var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("encrypted", out var enc) && enc.ValueKind == JsonValueKind.True)
+                if (TryGetEncryptedFlag(doc.RootElement))
                 {
-                    var envelope = JsonSerializer.Deserialize<EncryptedManifestEnvelope>(json);
+                    var envelope = JsonSerializer.Deserialize<EncryptedManifestEnvelope>(json, JsonOptions);
                     manifest = envelope?.Manifest;
                     salt = envelope?.Salt is { } s ? Convert.FromBase64String(s) : null;
                     summary.RequiresPassword = true;
                 }
                 else
                 {
-                    manifest = JsonSerializer.Deserialize<BackupManifest>(json);
+                    manifest = JsonSerializer.Deserialize<BackupManifest>(json, JsonOptions);
                 }
             }
             catch (JsonException)
@@ -474,23 +506,31 @@ public sealed class BackupService
                         }
                     }
 
-                    using var conn = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = temp, Mode = SqliteOpenMode.ReadOnly }.ToString());
-                    conn.Open();
-                    using var check = conn.CreateCommand();
-                    check.CommandText = "PRAGMA integrity_check;";
-                    var integrity = check.ExecuteScalar()?.ToString();
-                    if (!string.Equals(integrity, "ok", StringComparison.OrdinalIgnoreCase))
+                    using (var conn = new SqliteConnection(new SqliteConnectionStringBuilder
                     {
-                        summary.Problems.Add("The database snapshot failed its integrity check.");
-                    }
+                        DataSource = temp,
+                        Mode = SqliteOpenMode.ReadOnly,
+                        Pooling = false
+                    }.ToString()))
+                    {
+                        conn.Open();
+                        using var check = conn.CreateCommand();
+                        check.CommandText = "PRAGMA integrity_check;";
+                        var integrity = check.ExecuteScalar()?.ToString();
+                        if (!string.Equals(integrity, "ok", StringComparison.OrdinalIgnoreCase))
+                        {
+                            summary.Problems.Add("The database snapshot failed its integrity check.");
+                        }
 
-                    if (manifest.Counts.Count == 0)
-                    {
-                        manifest.Counts = CountsFrom(conn);
+                        if (manifest.Counts.Count == 0)
+                        {
+                            manifest.Counts = CountsFrom(conn);
+                        }
                     }
                 }
                 finally
                 {
+                    SqliteConnection.ClearAllPools();
                     try { File.Delete(temp); } catch { /* ignore */ }
                 }
             }
@@ -652,8 +692,15 @@ public sealed class BackupService
 
 internal sealed class EncryptedManifestEnvelope
 {
+    [System.Text.Json.Serialization.JsonPropertyName("encrypted")]
     public bool Encrypted { get; set; } = true;
+
+    [System.Text.Json.Serialization.JsonPropertyName("kdfIterations")]
     public int KdfIterations { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("salt")]
     public string? Salt { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("manifest")]
     public BackupManifest? Manifest { get; set; }
 }

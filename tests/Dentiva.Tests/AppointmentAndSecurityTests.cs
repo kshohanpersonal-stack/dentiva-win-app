@@ -287,7 +287,8 @@ public class SecurityTests
     [InlineData("short", PasswordStrength.Unacceptable)]
     [InlineData("", PasswordStrength.Unacceptable)]
     [InlineData("password", PasswordStrength.Weak)]
-    [InlineData("Password1", PasswordStrength.Strong)]
+    [InlineData("Password1", PasswordStrength.Fair)]
+    [InlineData("Password1!", PasswordStrength.Strong)]
     [InlineData("P@ssw0rd!Long2026", PasswordStrength.Excellent)]
     public void PasswordStrength_IsEvaluatedConsistently(string password, PasswordStrength expected)
         => Assert.Equal(expected, PasswordHasher.Evaluate(password));
@@ -340,7 +341,7 @@ public class SecurityTests
 
         var locked = await h.Users.AuthenticateAsync("owner", "OwnerPass123!");
         Assert.False(locked.IsSuccess);
-        Assert.Contains("locked", locked.Error!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Too many failed attempts", locked.Error!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
