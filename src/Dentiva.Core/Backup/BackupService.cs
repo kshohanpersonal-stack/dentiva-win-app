@@ -541,7 +541,7 @@ public sealed class BackupService
     }
 
     /// <summary>Rejects absolute paths, drive letters and any traversal segment.</summary>
-    internal static bool IsSafeEntryName(string name)
+    public static bool IsSafeEntryName(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return false;
         if (name.Contains("..", StringComparison.Ordinal)) return false;
