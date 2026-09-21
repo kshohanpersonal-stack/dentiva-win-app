@@ -17,6 +17,12 @@ internal static class DocTheme
     public const string Success = "#1E8E5A";
     public const string Danger = "#C0392B";
 
+    /// <summary>
+    /// QuestPDF exposes colours both as <c>Color</c> and as hex strings. Keeping our own string
+    /// constant avoids ternaries that mix the two types (which the compiler cannot resolve).
+    /// </summary>
+    public const string White = "#FFFFFF";
+
     public const float BaseFont = 9.5f;
 
     public static PageSize Resolve(PrintLayout layout) => layout.Format switch
@@ -39,6 +45,10 @@ internal static class DocTheme
 
     public static string Date(DateTime? value) => value?.ToString("dd MMM yyyy", CultureInfo.InvariantCulture) ?? "—";
     public static string DateTimeText(DateTime? value) => value?.ToString("dd MMM yyyy, hh:mm tt", CultureInfo.InvariantCulture) ?? "—";
+
+    /// <summary>Applies semi-bold weight only when <paramref name="condition"/> holds.</summary>
+    public static TextSpanDescriptor SemiBoldIf(this TextSpanDescriptor descriptor, bool condition)
+        => condition ? descriptor.SemiBold() : descriptor;
 
     /// <summary>Loads a branding image, returning null when the file is missing or unreadable.</summary>
     public static byte[]? TryLoadImage(string? path)
@@ -239,7 +249,7 @@ public sealed class InvoiceDocument : IDocument
                     {
                         var cell = header.Cell().Background(DocTheme.Primary).PaddingVertical(6).PaddingHorizontal(5);
                         var item = right ? cell.AlignRight() : cell;
-                        item.Text(text).FontSize(8.5f).SemiBold().FontColor(Colors.White);
+                        item.Text(text).FontSize(8.5f).SemiBold().FontColor(DocTheme.White);
                     }
 
                     Cell("#");
@@ -253,7 +263,7 @@ public sealed class InvoiceDocument : IDocument
                 var index = 1;
                 foreach (var item in invoice.Items)
                 {
-                    var background = index % 2 == 0 ? DocTheme.Surface : Colors.White;
+                    var background = index % 2 == 0 ? DocTheme.Surface : DocTheme.White;
 
                     table.Cell().Background(background).PaddingVertical(5).PaddingHorizontal(5)
                         .Text(index.ToString()).FontSize(8.5f).FontColor(DocTheme.Muted);
@@ -315,11 +325,11 @@ public sealed class InvoiceDocument : IDocument
                         {
                             r.RelativeItem().Text(label)
                                 .FontSize(emphasise ? 10f : 8.8f)
-                                .SemiBold(emphasise ? true : false)
+                                .SemiBoldIf(emphasise)
                                 .FontColor(colour ?? (emphasise ? DocTheme.Ink : DocTheme.Muted));
                             r.ConstantItem(105).AlignRight().Text(value)
                                 .FontSize(emphasise ? 10f : 8.8f)
-                                .SemiBold(true)
+                                .SemiBold()
                                 .FontColor(colour ?? DocTheme.Ink);
                         });
                     }
@@ -404,9 +414,9 @@ public sealed class InvoiceDocument : IDocument
                 {
                     col.Item().Row(r =>
                     {
-                        r.RelativeItem().Text(label).FontSize(bold ? 8.5f : 7.8f).SemiBold(bold);
+                        r.RelativeItem().Text(label).FontSize(bold ? 8.5f : 7.8f).SemiBoldIf(bold);
                         r.ConstantItem(62).AlignRight().Text(value.ToString("N2", CultureInfo.InvariantCulture))
-                            .FontSize(bold ? 8.5f : 7.8f).SemiBold(bold);
+                            .FontSize(bold ? 8.5f : 7.8f).SemiBoldIf(bold);
                     });
                 }
 
@@ -488,14 +498,14 @@ public sealed class ReceiptDocument : IDocument
                         c.Item().Text(payment.IsRefund ? "Amount refunded" : "Amount received")
                             .FontSize(9).FontColor("#C8DCEF");
                         c.Item().PaddingTop(3).Text(DocTheme.Money(payment.Amount, clinic))
-                            .FontSize(21).Bold().FontColor(Colors.White);
+                            .FontSize(21).Bold().FontColor(DocTheme.White);
                     });
 
                     row.ConstantItem(180).AlignRight().Column(c =>
                     {
                         c.Item().AlignRight().Text("Remaining due").FontSize(9).FontColor("#C8DCEF");
                         c.Item().PaddingTop(3).AlignRight().Text(DocTheme.Money(_data.RemainingDue, clinic))
-                            .FontSize(15).SemiBold().FontColor(Colors.White);
+                            .FontSize(15).SemiBold().FontColor(DocTheme.White);
                     });
                 });
 

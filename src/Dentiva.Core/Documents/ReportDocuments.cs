@@ -83,14 +83,14 @@ public sealed class TabularReportDocument : IDocument
                             foreach (var col in _data.Columns)
                             {
                                 header.Cell().Background(DocTheme.Primary).PaddingVertical(5).PaddingHorizontal(4)
-                                    .Text(col).FontSize(8).SemiBold().FontColor(Colors.White);
+                                    .Text(col).FontSize(8).SemiBold().FontColor(DocTheme.White);
                             }
                         });
 
                         var index = 0;
                         foreach (var row in _data.Rows)
                         {
-                            var background = index % 2 == 0 ? Colors.White : DocTheme.Surface;
+                            var background = index % 2 == 0 ? DocTheme.White : DocTheme.Surface;
                             for (var i = 0; i < _data.Columns.Count; i++)
                             {
                                 var value = i < row.Length ? row[i] : string.Empty;
@@ -229,7 +229,7 @@ public sealed class PatientSummaryDocument : IDocument
                         var i = 0;
                         foreach (var v in _data.Visits.OrderByDescending(x => x.VisitDate))
                         {
-                            var bg = i++ % 2 == 0 ? Colors.White : DocTheme.Surface;
+                            var bg = i++ % 2 == 0 ? DocTheme.White : DocTheme.Surface;
                             Cell(table, bg, DocTheme.Date(v.VisitDate));
                             Cell(table, bg, v.Reason ?? v.Complaint ?? "—");
                             Cell(table, bg, Combine(v.Diagnosis, v.ClinicalNotes));
@@ -259,7 +259,7 @@ public sealed class PatientSummaryDocument : IDocument
                         var i = 0;
                         foreach (var t in _data.Treatments.OrderByDescending(x => x.TreatmentDate))
                         {
-                            var bg = i++ % 2 == 0 ? Colors.White : DocTheme.Surface;
+                            var bg = i++ % 2 == 0 ? DocTheme.White : DocTheme.Surface;
                             Cell(table, bg, DocTheme.Date(t.TreatmentDate));
                             Cell(table, bg, t.CategoryName ?? "—");
                             Cell(table, bg, t.ProcedureName);
@@ -320,7 +320,7 @@ public sealed class PatientSummaryDocument : IDocument
             foreach (var h in headers)
             {
                 header.Cell().Background(DocTheme.Primary).PaddingVertical(4).PaddingHorizontal(4)
-                    .Text(h).FontSize(7.8f).SemiBold().FontColor(Colors.White);
+                    .Text(h).FontSize(7.8f).SemiBold().FontColor(DocTheme.White);
             }
         });
     }
