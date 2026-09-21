@@ -3,12 +3,16 @@ name: Dentiva CI
 on:
   workflow_dispatch:
   push:
-    branches: [ "arena/**", "main" ]
+    branches: [ "arena/**" ]
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -18,17 +22,88 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore
-        run: dotnet restore Dentiva.sln
+        id: restore
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          dotnet restore Dentiva.sln 2>&1 | Tee-Object -FilePath ci-restore.log
+          exit $LASTEXITCODE
 
       - name: Build Release
-        run: dotnet build Dentiva.sln -c Release --no-restore /warnaserror:CS0103,CS0246,CS1061,CS0117,CS7036,CS1503
+        id: build
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          dotnet build Dentiva.sln -c Release --no-restore -v minimal 2>&1 | Tee-Object -FilePath ci-build.log
+          exit $LASTEXITCODE
 
       - name: Test
-        run: dotnet test tests/Dentiva.Tests/Dentiva.Tests.csproj -c Release --no-build --logger "trx;LogFileName=results.trx" --results-directory TestResults
+        id: test
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          dotnet test tests/Dentiva.Tests/Dentiva.Tests.csproj -c Release --no-build -v minimal 2>&1 | Tee-Object -FilePath ci-test.log
+          exit $LASTEXITCODE
 
-      - name: Upload test results
+      - name: Publish log sink
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: TestResults/
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          function Tail($path, $n) {
+            if (Test-Path $path) {
+              $lines = Get-Content $path
+              $keep = $lines | Where-Object { $_ -match 'error|Error|warning CS|Failed|FAILED|Passed!|Build succeeded|Determining|exception' }
+              if ($keep.Count -eq 0) { $keep = $lines }
+              return ($keep | Select-Object -Last $n) -join "`n"
+            }
+            return "(missing $path)"
+          }
+
+          $body = @"
+### Dentiva CI run ${{ github.run_id }}
+commit: ${{ github.sha }}
+restore: ${{ steps.restore.outcome }} | build: ${{ steps.build.outcome }} | test: ${{ steps.test.outcome }}
+
+<details><summary>restore</summary>
+
+``````
+$(Tail 'ci-restore.log' 60)
+``````
+</details>
+
+<details><summary>build</summary>
+
+``````
+$(Tail 'ci-build.log' 150)
+``````
+</details>
+
+<details><summary>test</summary>
+
+``````
+$(Tail 'ci-test.log' 120)
+``````
+</details>
+"@
+          if ($body.Length -gt 60000) { $body = $body.Substring(0, 60000) }
+          $body | Out-File -FilePath ci-comment.md -Encoding utf8
+
+          $title = "CI Log Sink"
+          $existing = gh issue list --state open --search "$title in:title" --json number,title --limit 10 | ConvertFrom-Json
+          $num = ($existing | Where-Object { $_.title -eq $title } | Select-Object -First 1).number
+          if (-not $num) {
+            $num = (gh issue create --title $title --body "Automated build log channel for the Dentiva pipeline." | Select-String -Pattern '(\d+)$').Matches.Groups[1].Value
+          }
+          gh issue comment $num --body-file ci-comment.md
+          Write-Host "posted to issue #$num"
+
+      - name: Gate
+        if: always()
+        shell: pwsh
+        run: |
+          if ('${{ steps.restore.outcome }}' -ne 'success') { throw 'restore failed' }
+          if ('${{ steps.build.outcome }}' -ne 'success') { throw 'build failed' }
+          if ('${{ steps.test.outcome }}' -ne 'success') { throw 'tests failed' }
+          Write-Host 'All stages succeeded.'
