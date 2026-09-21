@@ -89,7 +89,7 @@ public static class SqliteExtensions
             return DateTime.UtcNow;
         }
 
-        return DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind | DateTimeStyles.AdjustToUniversal, out var value)
+        return DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var value)
             ? DateTime.SpecifyKind(value, DateTimeKind.Utc)
             : DateTime.UtcNow;
     }
@@ -102,7 +102,7 @@ public static class SqliteExtensions
             return null;
         }
 
-        return DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind | DateTimeStyles.AdjustToUniversal, out var value)
+        return DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var value)
             ? DateTime.SpecifyKind(value, DateTimeKind.Utc)
             : null;
     }
